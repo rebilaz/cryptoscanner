@@ -21,7 +21,6 @@ LOGGER = get_logger(__name__)
 
 BINANCE_ENDPOINT = "https://api.binance.com/api/v3/ticker/24hr"
 
-
 TABLE_SCHEMA = [
     bigquery.SchemaField("symbol", "STRING"),
     bigquery.SchemaField("priceChangePercent", "FLOAT"),
@@ -48,7 +47,6 @@ def fetch_binance_ticker() -> List[Dict[str, Any]]:
     LOGGER.debug("Received %d rows", len(data))
     return data
 
-
 def normalize_binance_data(data: List[Dict[str, Any]]) -> pd.DataFrame:
     """Normalize raw Binance data into a DataFrame.
 
@@ -64,9 +62,10 @@ def normalize_binance_data(data: List[Dict[str, Any]]) -> pd.DataFrame:
     """
     df = pd.DataFrame(data)
     df = df[["symbol", "priceChangePercent", "lastPrice", "closeTime"]]
+    df["priceChangePercent"] = df["priceChangePercent"].astype(float)
+    df["lastPrice"] = df["lastPrice"].astype(float)
     df["closeTime"] = pd.to_datetime(df["closeTime"], unit="ms")
     return df
-
 
 def ingest_binance_to_bq(project_id: str = "starlit-verve-458814-u9", dataset: str = "cryptoscanner") -> None:
     """Ingest Binance ticker data into BigQuery.
