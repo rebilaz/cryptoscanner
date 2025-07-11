@@ -17,15 +17,15 @@ def compute_daily_aggregate(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df : pd.DataFrame
-        Raw on-chain metrics with ``timestamp`` and ``value``.
+        Raw on-chain metrics with ``timestamp`` and ``eth_transferred``.
 
     Returns
     -------
     pd.DataFrame
-        Aggregated values per day.
+        Aggregated ETH transferred per day.
     """
     df["date"] = pd.to_datetime(df["timestamp"]).dt.date
-    return df.groupby("date").agg({"value": "sum"}).reset_index()
+    return df.groupby("date").agg({"eth_transferred": "sum"}).reset_index()
 
 
 def run_onchain_indicator_job(project_id: str = "starlit-verve-458814-u9", dataset: str = "cryptoscanner") -> pd.DataFrame:
@@ -41,7 +41,7 @@ def run_onchain_indicator_job(project_id: str = "starlit-verve-458814-u9", datas
     Returns
     -------
     pd.DataFrame
-        Daily aggregated metrics.
+        Daily aggregated ETH transferred.
     """
     LOGGER.info("Running on-chain indicator job")
     client = get_client(project_id)

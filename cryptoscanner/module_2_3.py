@@ -20,15 +20,15 @@ LOGGER = get_logger(__name__)
 
 TABLE_SCHEMA = [
     bigquery.SchemaField("date", "DATE"),
-    bigquery.SchemaField("value", "FLOAT"),
+    bigquery.SchemaField("eth_transferred", "FLOAT"),
     bigquery.SchemaField("anomaly", "BOOL"),
 ]
 
 
 def detect_anomalies(df: pd.DataFrame) -> pd.DataFrame:
     """Simple anomaly detection using mean + 2*std threshold."""
-    threshold = df["value"].mean() + 2 * df["value"].std()
-    df["anomaly"] = df["value"] > threshold
+    threshold = df["eth_transferred"].mean() + 2 * df["eth_transferred"].std()
+    df["anomaly"] = df["eth_transferred"] > threshold
     return df
 
 
