@@ -13,6 +13,7 @@ cryptoscanner/
 │   ├── module_1_2.py  # CEX indicators
 │   ├── module_1_3.py  # Decision engine
 │   ├── module_2_1.py  # Dune ingestion
+│   ├── module_2_1_1.py  # Public BigQuery ingestion
 │   ├── module_2_2.py  # On‑chain indicators
 │   ├── module_2_3.py  # Anomaly detection
 │   └── module_3_1.py  # Telegram alerting
