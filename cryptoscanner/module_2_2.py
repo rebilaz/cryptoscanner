@@ -46,8 +46,13 @@ def run_onchain_indicator_job(project_id: str = "starlit-verve-458814-u9", datas
     LOGGER.info("Running on-chain indicator job")
     client = get_client(project_id)
     ensure_dataset(client, dataset)
-    raw_table = f"{project_id}.{dataset}.market_raw_metrics"
+    raw_table = f"{project_id}.{dataset}.onchain_raw_metrics"
 
     df_raw = read_dataframe(raw_table, client)
+    # S'assurer que les colonnes nécessaires sont présentes
+    required_cols = ["timestamp", "address", "eth_transferred", "gas_price_gwei", "source"]
+    missing_cols = [col for col in required_cols if col not in df_raw.columns]
+    if missing_cols:
+        raise ValueError(f"Missing columns in onchain_raw_metrics: {missing_cols}")
     df_daily = compute_daily_aggregate(df_raw)
     return df_daily

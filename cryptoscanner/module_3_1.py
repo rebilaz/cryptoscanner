@@ -21,14 +21,57 @@ def fetch_messages(table_id: str, client: bigquery.Client) -> Iterable[str]:
         yield str(row.to_dict())
 
 
-def send_telegram_messages(api_token: str, chat_id: str, messages: Iterable[str]) -> None:
-    """Send each message to Telegram and log any failure."""
-    bot = Bot(token=api_token)
-    for msg in messages:
-        try:
-            bot.send_message(chat_id=chat_id, text=msg, parse_mode="Markdown")
-        except Exception as exc:
-            LOGGER.error("Failed to send message: %s", exc)
+# NOTE: On n'envoie qu'un message global pour éviter le spam et respecter les limites Telegram.
+# On convertit tous les types pour la compatibilité Telegram (Decimal, bytes, etc.).
+def ensure_serializable(obj):
+    """Recursively convert decimal.Decimal to float and bytes to str for Telegram serialization."""
+    import decimal
+    if isinstance(obj, dict):
+        return {k: ensure_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [ensure_serializable(x) for x in obj]
+    elif isinstance(obj, decimal.Decimal):
+        return float(obj)
+    elif isinstance(obj, bytes):
+        return obj.decode('utf-8')
+    else:
+        return obj
+
+
+# Compatibilité python-telegram-bot v20+ (async/await) ou v13.15 (sync)
+try:
+    import telegram
+    if hasattr(telegram, 'Bot') and hasattr(telegram.Bot, 'send_message') and telegram.__version__.startswith('20'):
+        ASYNC_TELEGRAM = True
+    else:
+        ASYNC_TELEGRAM = False
+except ImportError:
+    ASYNC_TELEGRAM = False
+
+
+def send_telegram_messages(api_token: str, chat_id: str, messages: list) -> None:
+    """
+    Send a single summary message to Telegram. All values are made serializable. Async if v20+, else sync.
+    Only one message is sent per run, summarizing the results (e.g. number of signals/anomalies/incidents).
+    This avoids spamming and respects Telegram API limits.
+    """
+    # Compose a single summary message
+    n_signals = len(messages)
+    n_anomalies = sum('anomaly' in str(m).lower() for m in messages)
+    n_incidents = sum('incident' in str(m).lower() for m in messages)
+    summary = f"\U0001F4CA Scan terminé ! {n_signals} signaux, {n_anomalies} anomalies, {n_incidents} incident(s) on-chain."
+    summary = ensure_serializable(summary)
+    if ASYNC_TELEGRAM:
+        import asyncio
+        from telegram import Bot
+        async def send_async():
+            bot = Bot(token=api_token)
+            await bot.send_message(chat_id=chat_id, text=summary, parse_mode="Markdown")
+        asyncio.run(send_async())
+    else:
+        from telegram import Bot
+        bot = Bot(token=api_token)
+        bot.send_message(chat_id=chat_id, text=summary, parse_mode="Markdown")
 
 
 def alert_from_bigquery(
