@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from typing import Iterable
 
+import pandas as pd
+
 from google.cloud import bigquery
 from telegram import Bot
 
@@ -15,7 +17,11 @@ LOGGER = get_logger(__name__)
 
 
 def fetch_messages(table_id: str, client: bigquery.Client) -> Iterable[str]:
-    """Yield serialized messages from a BigQuery table."""
+    """Yield serialized messages from a BigQuery table.
+
+    This utility remains for backward compatibility with older tests. It simply
+    returns the stringified rows of the table.
+    """
     df = read_dataframe(table_id, client)
     for _, row in df.iterrows():
         yield str(row.to_dict())
@@ -41,37 +47,50 @@ def ensure_serializable(obj):
 # Compatibilité python-telegram-bot v20+ (async/await) ou v13.15 (sync)
 try:
     import telegram
-    if hasattr(telegram, 'Bot') and hasattr(telegram.Bot, 'send_message') and telegram.__version__.startswith('20'):
+    if telegram.__version__.startswith("20"):
         ASYNC_TELEGRAM = True
     else:
         ASYNC_TELEGRAM = False
-except ImportError:
+except Exception:
     ASYNC_TELEGRAM = False
 
 
-def send_telegram_messages(api_token: str, chat_id: str, messages: list) -> None:
-    """
-    Send a single summary message to Telegram. All values are made serializable. Async if v20+, else sync.
-    Only one message is sent per run, summarizing the results (e.g. number of signals/anomalies/incidents).
-    This avoids spamming and respects Telegram API limits.
-    """
-    # Compose a single summary message
-    n_signals = len(messages)
-    n_anomalies = sum('anomaly' in str(m).lower() for m in messages)
-    n_incidents = sum('incident' in str(m).lower() for m in messages)
-    summary = f"\U0001F4CA Scan terminé ! {n_signals} signaux, {n_anomalies} anomalies, {n_incidents} incident(s) on-chain."
-    summary = ensure_serializable(summary)
+def send_telegram_message(api_token: str, chat_id: str, text: str) -> None:
+    """Send ``text`` to Telegram, handling sync and async APIs transparently."""
+    text = ensure_serializable(text)
     if ASYNC_TELEGRAM:
         import asyncio
-        from telegram import Bot
-        async def send_async():
+        async def send_async() -> None:
             bot = Bot(token=api_token)
-            await bot.send_message(chat_id=chat_id, text=summary, parse_mode="Markdown")
+            await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+
         asyncio.run(send_async())
     else:
-        from telegram import Bot
         bot = Bot(token=api_token)
-        bot.send_message(chat_id=chat_id, text=summary, parse_mode="Markdown")
+        bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown")
+
+
+def build_summary_from_dfs(df_decisions: pd.DataFrame, df_anomalies: pd.DataFrame) -> str:
+    """Return a human friendly summary message based on two DataFrames."""
+    n_signals = len(df_decisions)
+    n_anomalies = len(df_anomalies)
+    bool_cols = [c for c in df_anomalies.columns if "anomaly" in c.lower()]
+    n_incidents = int(df_anomalies[bool_cols].any(axis=1).sum()) if bool_cols else n_anomalies
+    return (
+        f"\U0001F4CA Scan terminé ! {n_signals} signaux, "
+        f"{n_anomalies} anomalies, {n_incidents} incident(s) on-chain."
+    )
+
+
+def build_summary(
+    decision_table: str,
+    anomaly_table: str,
+    client: bigquery.Client,
+) -> str:
+    """Fetch data from BigQuery tables and build the summary message."""
+    df_decisions = read_dataframe(decision_table, client)
+    df_anomalies = read_dataframe(anomaly_table, client)
+    return build_summary_from_dfs(df_decisions, df_anomalies)
 
 
 def alert_from_bigquery(
@@ -80,7 +99,7 @@ def alert_from_bigquery(
     project_id: str = "starlit-verve-458814-u9",
     dataset: str = "cryptoscanner",
 ) -> None:
-    """Send decision and anomaly alerts via Telegram.
+    """Send a single Telegram summary of decisions and anomalies.
 
     Parameters
     ----------
@@ -98,6 +117,6 @@ def alert_from_bigquery(
     decision_table = f"{project_id}.{dataset}.market_decision_outputs"
     anomaly_table = f"{project_id}.{dataset}.anomaly_alerts_onchain"
 
-    messages = list(fetch_messages(decision_table, client)) + list(fetch_messages(anomaly_table, client))
-    send_telegram_messages(api_token, chat_id, messages)
-    LOGGER.info("Sent %d messages to Telegram", len(messages))
+    summary = build_summary(decision_table, anomaly_table, client)
+    send_telegram_message(api_token, chat_id, summary)
+    LOGGER.info("Sent Telegram summary: %s", summary)
