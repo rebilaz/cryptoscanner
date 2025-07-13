@@ -76,3 +76,9 @@ pytest
 ## Cloud deployment notes
 
 The modules are self‑contained functions and can be orchestrated with cron jobs or container schedulers (Docker/Kubernetes). For secret management, use GCP Secret Manager or AWS Secrets Manager and export the values to the environment before running the pipeline.
+
+# 1. Active ton environnement virtuel (si pas déjà fait)
+source .venv/bin/activate
+
+# 2. Lance le pipeline principal
+python run_pipeline.py
